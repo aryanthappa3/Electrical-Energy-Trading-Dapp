@@ -1,6 +1,5 @@
 # Electrical-Energy-Trading-Dapp
 Decentralized P2P Energy Trading DApp | Ethereum Smart Contracts | Real-time Market Pricing
-# ⚡ Energy Trading DApp
 
 A decentralized peer-to-peer energy marketplace built on Ethereum using Solidity and Ethers.js. This DApp allows users to **list**, **buy**, **bid**, and **match** energy offers securely using smart contracts.
 
