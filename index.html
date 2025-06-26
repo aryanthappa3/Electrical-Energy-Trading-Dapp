@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Energy Trading DApp</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-light: #f3f6fd;
+      --text-light: #1a2238;
+      --bg-dark: #0d1117;
+      --text-dark: #e6edf3;
+      --primary: #007bff;
+    }
+    [data-theme="light"] body { background: var(--bg-light); color: var(--text-light); }
+    [data-theme="dark"] body { background: var(--bg-dark); color: var(--text-dark); }
+    body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; transition: background 0.4s, color 0.4s; }
+    header { background: #1a2238; color: #fff; padding: 30px 40px; text-align: center; box-shadow: 0 4px 8px rgba(0,0,0,0.2); position: relative; }
+    #themeToggle { position: absolute; top: 20px; right: 30px; background: #fff; color: #1a2238; border: none; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+    main { max-width: 1000px; margin: 60px auto; padding: 40px; background: #ffffff; box-shadow: 0 8px 24px rgba(0,0,0,0.1); border-radius: 16px; }
+    [data-theme="dark"] main { background: #161b22; }
+    h2, h3 { color: var(--primary); margin-bottom: 20px; }
+    section { margin-bottom: 40px; }
+    input[type="text"], input[type="number"] { padding: 12px; width: 100%; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+    button { padding: 12px 24px; background-color: var(--primary); color: #fff; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; transition: background-color 0.3s; }
+    button:hover { background-color: #0056b3; }
+    ul { list-style: none; padding-left: 0; }
+    ul li { background: rgba(0,0,0,0.05); margin-bottom: 10px; padding: 10px; border-radius: 8px; }
+    [data-theme="dark"] ul li { background: rgba(255,255,255,0.05); }
+    #historyList li { background-color: #e7f3ff; }
+    [data-theme="dark"] #historyList li { background-color: #1a2838; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚡ Energy Trading DApp</h1>
+    <p>Secure peer-to-peer energy trading using Ethereum smart contracts</p>
+    <button id="themeToggle" onclick="toggleTheme()">Toggle Theme</button>
+  </header>
+  <main>
+    <section><button onclick="connectWallet()">Connect Wallet</button><p id="userAddress">Wallet not connected</p></section>
+    <section><h3>📤 List Energy Offer</h3><input id="offerEnergy" type="number" placeholder="Total Energy (kWh)"><input id="offerPrice" type="text" placeholder="Price Per Unit (ETH)"><button onclick="listEnergyOffer(this)">List Offer</button></section>
+    <section><h3>💰 Place a Bid</h3><input id="bidEnergy" type="number" placeholder="Energy Amount"><input id="bidPrice" type="text" placeholder="Bid Price Per Unit (ETH)"><button onclick="placeBid(this)">Place Bid</button></section>
+    <section><h3>🔄 Match Offer and Bid</h3><input id="matchOfferId" type="number" placeholder="Offer ID"><input id="matchBidId" type="number" placeholder="Bid ID"><input id="matchAmount" type="number" placeholder="Amount to Trade"><button onclick="matchBidToOffer(this)">Match</button></section>
+    <section><h3>📊 Market Clearing Price</h3><button onclick="fetchMCP()">Get MCP</button><p id="mcpDisplay">-</p></section>
+    <section><h3>📦 View All Energy Offers</h3><button onclick="viewAllOffers()">View Offers</button><ul id="offerList"></ul></section>
+    <section><h3>🦾 View All Bids</h3><button onclick="viewAllBids()">View Bids</button><ul id="bidList"></ul></section>
+    <section><h3>🛒 Direct Buy Energy</h3><label for="buyOfferId">Offer ID:</label><input id="buyOfferId" type="number" placeholder="e.g. 2"><label for="buyAmount">Amount to Buy (kWh):</label><input id="buyAmount" type="number" placeholder="e.g. 5"><button onclick="directBuy(this)">Buy Energy</button></section>
+    <section><h3>❌ Cancel Offer/Bid</h3><input id="cancelOfferId" type="number" placeholder="Offer ID to Cancel"><button onclick="cancelOffer(this)">Cancel Offer</button><br><br><input id="cancelBidId" type="number" placeholder="Bid ID to Cancel"><button onclick="cancelBid(this)">Cancel Bid</button></section>
+    <section>
+      <h3>📄 View My Trade History</h3>
+      <button onclick="viewHistory()">Load My History</button>
+      <ul id="historyList"></ul>
+    </section>
+  </main>
+  <script>
+    const contractAddress = //"ADD YOUR CONTRACT ADDRESS";
+    const contractABI = //[ADD YOUR ABI FROM REMIX ID];
+
+    let provider, signer, contract;
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      html.dataset.theme = html.dataset.theme === "dark" ? "light" : "dark";
+    }
+
+    async function connectWallet() {
+      if (!window.ethereum) return alert("Please install MetaMask to use this DApp");
+      provider = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      signer = provider.getSigner();
+      contract = new ethers.Contract(contractAddress, contractABI, signer);
+      document.getElementById("userAddress").innerText = `Connected: ${await signer.getAddress()}`;
+    }
+
+    function disableButtonTemporarily(btn) {
+      btn.disabled = true;
+      setTimeout(() => btn.disabled = false, 3000);
+    }
+
+    async function listEnergyOffer(btn) {
+      disableButtonTemporarily(btn);
+      const energy = document.getElementById("offerEnergy").value;
+      const price = ethers.utils.parseEther(document.getElementById("offerPrice").value);
+      try {
+        const tx = await contract.listEnergy(energy, price);
+        await tx.wait();
+        alert("✅ Offer Listed Successfully");
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      }
+    }
+
+    async function
