@@ -31,19 +31,20 @@
     #historyList li { background-color: #e7f3ff; }
     [data-theme="dark"] #historyList li { background-color: #1a2838; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 </head>
 <body>
   <header>
     <h1>⚡ Energy Trading DApp</h1>
     <p>Secure peer-to-peer energy trading using Ethereum smart contracts</p>
-    <button id="themeToggle" onclick="toggleTheme()">Toggle Theme</button>
+    <button id="themeToggle" onclick="toggleTheme()">🌞</button>
   </header>
   <main>
     <section><button onclick="connectWallet()">Connect Wallet</button><p id="userAddress">Wallet not connected</p></section>
     <section><h3>📤 List Energy Offer</h3><input id="offerEnergy" type="number" placeholder="Total Energy (kWh)"><input id="offerPrice" type="text" placeholder="Price Per Unit (ETH)"><button onclick="listEnergyOffer(this)">List Offer</button></section>
     <section><h3>💰 Place a Bid</h3><input id="bidEnergy" type="number" placeholder="Energy Amount"><input id="bidPrice" type="text" placeholder="Bid Price Per Unit (ETH)"><button onclick="placeBid(this)">Place Bid</button></section>
     <section><h3>🔄 Match Offer and Bid</h3><input id="matchOfferId" type="number" placeholder="Offer ID"><input id="matchBidId" type="number" placeholder="Bid ID"><input id="matchAmount" type="number" placeholder="Amount to Trade"><button onclick="matchBidToOffer(this)">Match</button></section>
-    <section><h3>📊 Market Clearing Price</h3><button onclick="fetchMCP()">Get MCP</button><p id="mcpDisplay">-</p></section>
     <section><h3>📦 View All Energy Offers</h3><button onclick="viewAllOffers()">View Offers</button><ul id="offerList"></ul></section>
     <section><h3>🦾 View All Bids</h3><button onclick="viewAllBids()">View Bids</button><ul id="bidList"></ul></section>
     <section><h3>🛒 Direct Buy Energy</h3><label for="buyOfferId">Offer ID:</label><input id="buyOfferId" type="number" placeholder="e.g. 2"><label for="buyAmount">Amount to Buy (kWh):</label><input id="buyAmount" type="number" placeholder="e.g. 5"><button onclick="directBuy(this)">Buy Energy</button></section>
@@ -53,6 +54,16 @@
       <button onclick="viewHistory()">Load My History</button>
       <ul id="historyList"></ul>
     </section>
+<section><h3>📊 Market Clearing Price</h3><button onclick="fetchMCP()">Get MCP</button><p id="mcpDisplay">-</p></section>
+<!-- Place the new MCP chart section here -->
+<section>
+  <h3>📈 Real-Time MCP Chart</h3>
+  <div style="overflow-x: auto;">
+    <canvas id="mcpChart" width="800" height="400"></canvas>
+  </div>
+  <button onclick="mcpChart.resetZoom()">🔄 Reset Zoom</button>
+  <button onclick="updateMCPChart()">🔁 Refresh MCP Chart</button>
+</section>
   </main>
   <script>
     const contractAddress = "0x274835baad1c56c0ec80890d28687bf79fb07331";
@@ -533,9 +544,17 @@
     let provider, signer, contract;
 
     function toggleTheme() {
-      const html = document.documentElement;
-      html.dataset.theme = html.dataset.theme === "dark" ? "light" : "dark";
-    }
+  const html = document.documentElement;
+  const button = document.getElementById("themeToggle");
+  
+  if (html.dataset.theme === "dark") {
+    html.dataset.theme = "light";
+    button.textContent = "🌞";
+  } else {
+    html.dataset.theme = "dark";
+    button.textContent = "🌙";
+  }
+}
 
     async function connectWallet() {
       if (!window.ethereum) return alert("Please install MetaMask to use this DApp");
@@ -559,6 +578,7 @@
         const tx = await contract.listEnergy(energy, price);
         await tx.wait();
         alert("✅ Offer Listed Successfully");
+        updateMCPChart();
       } catch (err) {
         alert("❌ Error: " + err.message);
       }
@@ -573,6 +593,7 @@
         const tx = await contract.placeBid(amount, pricePerUnit, { value: totalValue });
         await tx.wait();
         alert("✅ Bid Placed Successfully");
+        updateMCPChart(); 
       } catch (err) {
         alert("❌ Error: " + err.message);
       }
@@ -639,6 +660,7 @@
         const tx = await contract.buyEnergy(offerId, amount, { value: totalPrice });
         await tx.wait();
         alert(`✅ Bought ${amount} kWh @ ${ethers.utils.formatEther(offer.pricePerUnit)} ETH from Offer ID ${offerId}`);
+        updateMCPChart();
         await viewAllOffers();
       } catch (err) {
         alert("❌ Error: " + err.message);
@@ -731,6 +753,98 @@
         historyList.innerHTML = "<li>No history found for your address.</li>";
       }
     }
+   let mcpChart;
+let mcpData = {
+  labels: [],
+  datasets: [{
+    label: 'MCP (ETH)',
+    borderColor: '#007bff',
+    backgroundColor: 'rgba(0,123,255,0.1)',
+    data: [],
+    fill: true,
+    tension: 0.3,
+    pointRadius: 3,
+    pointHoverRadius: 6
+  }]
+};
+
+function initMCPChart() {
+  const ctx = document.getElementById('mcpChart').getContext('2d');
+  mcpChart = new Chart(ctx, {
+    type: 'line',
+    data: mcpData,
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false,
+      },
+      plugins: {
+        zoom: {
+          pan: {
+            enabled: true,
+            mode: 'x',
+          },
+          zoom: {
+            wheel: {
+              enabled: true,
+            },
+            pinch: {
+              enabled: true,
+            },
+            mode: 'x',
+          },
+        },
+        tooltip: {
+          mode: 'nearest',
+          intersect: false
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Time' },
+          ticks: {
+            maxRotation: 45,
+            minRotation: 45,
+          }
+        },
+        y: {
+          title: { display: true, text: 'ETH' },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
+async function updateMCPChart() {
+  try {
+    const mcp = await contract.getMarketClearingPrice();
+    const formatted = parseFloat(ethers.utils.formatEther(mcp));
+    const time = new Date().toLocaleTimeString();
+
+    mcpData.labels.push(time);
+    mcpData.datasets[0].data.push(formatted);
+
+    // Limit to last 50 points for performance
+    if (mcpData.labels.length > 50) {
+      mcpData.labels.shift();
+      mcpData.datasets[0].data.shift();
+    }
+
+    mcpChart.update();
+  } catch (err) {
+    console.error("MCP update error:", err);
+  }
+}
+
+// Initialize chart and start fetching MCP every 10 seconds
+window.addEventListener('DOMContentLoaded', () => {
+  initMCPChart();
+  //setInterval(updateMCPChart, 10000); // every 10 seconds
+});
+
   </script>
 </body>
 </html>
