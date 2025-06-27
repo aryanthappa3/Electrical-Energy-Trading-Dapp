@@ -564,4 +564,173 @@
       }
     }
 
-    async function
+    async function placeBid(btn) {
+      disableButtonTemporarily(btn);
+      const amount = document.getElementById("bidEnergy").value;
+      const pricePerUnit = ethers.utils.parseEther(document.getElementById("bidPrice").value);
+      const totalValue = pricePerUnit.mul(amount);
+      try {
+        const tx = await contract.placeBid(amount, pricePerUnit, { value: totalValue });
+        await tx.wait();
+        alert("✅ Bid Placed Successfully");
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      }
+    }
+
+    async function matchBidToOffer(btn) {
+      disableButtonTemporarily(btn);
+      const offerId = document.getElementById("matchOfferId").value;
+      const bidId = document.getElementById("matchBidId").value;
+      const amount = document.getElementById("matchAmount").value;
+      try {
+        const tx = await contract.matchBidToOffer(offerId, bidId, amount);
+        await tx.wait();
+        alert("✅ Matched Successfully");
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      }
+    }
+
+    async function fetchMCP() {
+      try {
+        const mcp = await contract.getMarketClearingPrice();
+        document.getElementById("mcpDisplay").innerText = ethers.utils.formatEther(mcp) + " ETH";
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      }
+    }
+
+    async function viewAllOffers() {
+      const count = await contract.offerCount();
+      const list = document.getElementById("offerList");
+      list.innerHTML = "";
+      for (let i = 0; i < count; i++) {
+        const offer = await contract.getOffer(i);
+        if (offer.isActive) {
+          const li = document.createElement("li");
+          li.textContent = `Offer ID: ${i} | Seller: ${offer.seller} | Total: ${offer.totalEnergy} | Available: ${offer.availableEnergy} | Price: ${ethers.utils.formatEther(offer.pricePerUnit)} ETH/kWh`;
+          list.appendChild(li);
+        }
+      }
+    }
+
+    async function viewAllBids() {
+      const count = await contract.bidCount();
+      const list = document.getElementById("bidList");
+      list.innerHTML = "";
+      for (let i = 0; i < count; i++) {
+        const bid = await contract.getBid(i);
+        if (bid.isActive) {
+          const li = document.createElement("li");
+          li.textContent = `Bid ID: ${i} | Buyer: ${bid.buyer} | Amount: ${bid.amount} | Price: ${ethers.utils.formatEther(bid.pricePerUnit)} ETH/kWh`;
+          list.appendChild(li);
+        }
+      }
+    }
+
+    async function directBuy(btn) {
+      disableButtonTemporarily(btn);
+      const offerId = document.getElementById("buyOfferId").value;
+      const amount = document.getElementById("buyAmount").value;
+      try {
+        const offer = await contract.getOffer(offerId);
+        const totalPrice = offer.pricePerUnit.mul(amount);
+        const tx = await contract.buyEnergy(offerId, amount, { value: totalPrice });
+        await tx.wait();
+        alert(`✅ Bought ${amount} kWh @ ${ethers.utils.formatEther(offer.pricePerUnit)} ETH from Offer ID ${offerId}`);
+        await viewAllOffers();
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      }
+    }
+
+    async function cancelOffer(btn) {
+      disableButtonTemporarily(btn);
+      const offerId = document.getElementById("cancelOfferId").value;
+      try {
+        const tx = await contract.cancelOffer(offerId);
+        await tx.wait();
+        alert("✅ Offer Cancelled");
+        await viewAllOffers();
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      }
+    }
+
+    async function cancelBid(btn) {
+      disableButtonTemporarily(btn);
+      const bidId = document.getElementById("cancelBidId").value;
+      try {
+        const tx = await contract.cancelBid(bidId);
+        await tx.wait();
+        alert("✅ Bid Cancelled");
+        await viewAllBids();
+      } catch (err) {
+        alert("❌ Error: " + err.message);
+      }
+    }
+
+    async function viewHistory() {
+      if (!signer) return alert("Please connect wallet");
+      const userAddress = (await signer.getAddress()).toLowerCase();
+      const historyList = document.getElementById("historyList");
+      historyList.innerHTML = "🔄 Loading...";
+
+      const events = await contract.queryFilter("*", 0, "latest");
+      historyList.innerHTML = "";
+      let hasResults = false;
+
+      for (const e of events) {
+        const name = e.event;
+        const args = e.args;
+
+        if (name === "EnergyBought" && args.buyer.toLowerCase() === userAddress) {
+          const li = document.createElement("li");
+          li.textContent = `Bought ${args.amount} kWh from Offer ${args.offerId} for ${ethers.utils.formatEther(args.totalPrice)} ETH`;
+          historyList.appendChild(li);
+          hasResults = true;
+        }
+
+        if (name === "BidPlaced" && args.buyer.toLowerCase() === userAddress) {
+          const li = document.createElement("li");
+          li.textContent = `Placed Bid ${args.bidId}: ${args.amount} kWh @ ${ethers.utils.formatEther(args.pricePerUnit)} ETH`;
+          historyList.appendChild(li);
+          hasResults = true;
+        }
+
+        if (name === "EnergyListed" && args.seller.toLowerCase() === userAddress) {
+          const li = document.createElement("li");
+          li.textContent = `Listed Offer ${args.offerId}: ${args.totalEnergy} kWh @ ${ethers.utils.formatEther(args.pricePerUnit)} ETH`;
+          historyList.appendChild(li);
+          hasResults = true;
+        }
+
+        if (name === "BidCancelled") {
+          const bid = await contract.getBid(args.bidId);
+          if (bid.buyer.toLowerCase() === userAddress) {
+            const li = document.createElement("li");
+            li.textContent = `Cancelled Bid ${args.bidId}`;
+            historyList.appendChild(li);
+            hasResults = true;
+          }
+        }
+
+        if (name === "EnergyOfferCancelled") {
+          const offer = await contract.getOffer(args.offerId);
+          if (offer.seller.toLowerCase() === userAddress) {
+            const li = document.createElement("li");
+            li.textContent = `Cancelled Offer ${args.offerId}`;
+            historyList.appendChild(li);
+            hasResults = true;
+          }
+        }
+      }
+
+      if (!hasResults) {
+        historyList.innerHTML = "<li>No history found for your address.</li>";
+      }
+    }
+  </script>
+</body>
+</html>
